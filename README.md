@@ -1,96 +1,113 @@
-# BMS — Estimasi SOC Baterai Li-ion (Kelompok 4, SKPA)
+# BMS — Li-ion Battery SOC Estimation (Kelompok 4, SKPA)
 
-Proyek akhir mata kuliah **Sistem Kendali Prediktif & Adaptif**: identifikasi parameter model baterai secara online dan estimasi *State of Charge* (SOC) menggunakan FFRLS, Levenberg–Marquardt, dan Extended Kalman Filter di MATLAB.
+Final project for **Sistem Kendali Prediktif & Adaptif**: online identification of battery model parameters and *State of Charge* (SOC) estimation using FFRLS, Levenberg–Marquardt, and an Extended Kalman Filter in MATLAB.
 
-## Ringkasan
+## Overview
 
-Baterai dimodelkan sebagai **rangkaian ekivalen Thevenin orde-2 (2-RC)**:
+The battery is modelled as a **2nd-order Thevenin equivalent circuit (2-RC)**:
 
-```
-        R0        R1              R2
-Uoc ---/\/\/--+--/\/\/--+------/\/\/--+---- Ut
-              |    |    |        |    |
-              +----||---+        +----||---+
-                   C1                 C2
-```
+![Second-order RC equivalent circuit model](docs/images/rc-model.png)
 
-Alur kerjanya:
+The pipeline works in four stages:
 
-1. **Kurva OCV–SOC** diturunkan dari uji OCV lewat *polynomial fitting* (orde 2–12, dipilih RMSE terkecil, terpisah untuk charge & discharge).
-2. **FFRLS** (Forgetting Factor Recursive Least Squares, λ = 0.98) mengidentifikasi parameter diskrit θ₁…θ₆ dari data arus/tegangan secara online, lalu diinversi menjadi R0, R1, R2, C1, C2, Uoc.
-3. **Levenberg–Marquardt** memperhalus (*refine*) hasil FFRLS tiap titik waktu dengan optimasi nonlinier terhadap θ.
-4. **EKF** memakai parameter hasil LM untuk mengestimasi state `[U1; U2; SOC]`, dibandingkan terhadap *Coulomb counting* sebagai referensi.
+1. **OCV–SOC curve** is derived from OCV test data by polynomial fitting (orders 2–12, lowest RMSE wins, fitted separately for charge and discharge).
+2. **FFRLS** (Forgetting Factor Recursive Least Squares, λ = 0.98) identifies the discrete transfer-function parameters θ₁…θ₆ online from current/voltage data, which are then inverted into R0, R1, R2, C1, C2, Uoc.
+3. **Levenberg–Marquardt** refines the FFRLS estimate at each time step through nonlinear optimisation against θ.
+4. **EKF** uses the LM parameters to estimate the state `[U1; U2; SOC]`, benchmarked against *Coulomb counting*.
 
 ## Dataset
 
-Data uji baterai **A123 1.1 Ah @ 25 °C** (format CALCE):
+Battery test data for an **A123 18650 LiFePO4 cell, 1100 mAh, 25 °C** (CALCE format):
 
-| File | Isi | Kolom yang dipakai |
+| File | Contents | Columns used |
 |---|---|---|
-| `A1-007-OCV-25-20120905.xlsx` | Uji OCV sel #007 | 1 = waktu, 2 = arus, 3 = tegangan |
-| `A1-008-OCV-25-20120905.xlsx` | Uji OCV sel #008 | idem |
-| `A1-007-DST-US06-FUDS-25-20120827.xlsx` | Profil dinamis DST/US06/FUDS sel #007 | 1 = waktu, 4 = arus, 5 = tegangan |
-| `A1-008-DST-US06-FUDS-25-20120827.xlsx` | Profil dinamis sel #008 | idem |
+| `A1-007-OCV-25-20120905.xlsx` | OCV test, cell #007 | 1 = time, 2 = current, 3 = voltage |
+| `A1-008-OCV-25-20120905.xlsx` | OCV test, cell #008 | same |
+| `A1-007-DST-US06-FUDS-25-20120827.xlsx` | Dynamic DST/US06/FUDS profile, cell #007 | 1 = time, 4 = current, 5 = voltage |
+| `A1-008-DST-US06-FUDS-25-20120827.xlsx` | Dynamic profile, cell #008 | same |
 
-Kapasitas nominal yang dipakai di seluruh skrip: `Cn = 1.1 Ah`.
+Nominal capacity used throughout: `Cn = 1.1 Ah`.
 
-> Skrip saat ini di-*hardcode* ke sel **A1-007**. Untuk menjalankan sel 008, ganti nama file di bagian *Read Data* pada tiap notebook.
+> The scripts are hardcoded to cell **A1-007**. To run cell 008, change the filename in the *Read Data* section of each notebook.
 
-## Struktur File
+## Repository Layout
 
-**Live Script (urutan eksekusi):**
+**Live scripts, in execution order:**
 
-| File | Fungsi | Input | Output |
+| File | Role | Reads | Writes |
 |---|---|---|---|
-| [SoCApprox.mlx](SoCApprox.mlx) | Fitting polinomial OCV–SOC | `A1-007-OCV-*.xlsx` | `_polynomialEstimate.txt` |
-| [FFRLS.mlx](FFRLS.mlx) | Identifikasi parameter online | `A1-007-DST-*.xlsx` | `_FFRLSParameters.txt`, `_discreteParameters.txt` |
-| [LM.mlx](LM.mlx) | Refinement Levenberg–Marquardt | `_discreteParameters.txt` | `_LMParameters.txt` |
-| [EKF.mlx](EKF.mlx) | Estimasi SOC | `_LMParameters.txt`, `_polynomialEstimate.txt` | plot SOC, Ut, Uoc + error |
+| [SoCApprox.mlx](SoCApprox.mlx) | OCV–SOC polynomial fitting | `A1-007-OCV-*.xlsx` | `_polynomialEstimate.txt` |
+| [FFRLS.mlx](FFRLS.mlx) | Online parameter identification | `A1-007-DST-*.xlsx` | `_FFRLSParameters.txt`, `_discreteParameters.txt` |
+| [LM.mlx](LM.mlx) | Levenberg–Marquardt refinement | `_discreteParameters.txt` | `_LMParameters.txt` |
+| [EKF.mlx](EKF.mlx) | SOC estimation | `_LMParameters.txt`, `_polynomialEstimate.txt` | SOC / Ut / Uoc plots + error |
 
-**Fungsi pendukung:**
+**Helper functions:**
 
-- [UocCurve.m](UocCurve.m) — evaluasi OCV dari SOC; memilih koefisien charge/discharge berdasarkan tanda arus, dengan *clamping* di bawah ambang SOC minimum.
-- [dUocCurve.m](dUocCurve.m) — turunan dOCV/dSOC, dipakai sebagai Jacobian matriks output C pada EKF.
+- [UocCurve.m](UocCurve.m) — evaluates OCV from SOC, selecting the charge or discharge coefficient set based on current sign, and clamping below the minimum fitted SOC.
+- [dUocCurve.m](dUocCurve.m) — dOCV/dSOC derivative, used as the SOC entry of the EKF output Jacobian.
 
-**Data hasil (regenerated, boleh dihapus):**
+The `.txt` files above are intermediate artefacts and are not tracked in the repository, so **run the stages in order** on a fresh clone — each stage consumes what the previous one produced.
 
-`_polynomialEstimate.txt`, `_FFRLSParameters.txt`, `_discreteParameters.txt`, `_LMParameters.txt`, `voc_soc_polyfit_discharge_charge.txt`
+## Running It
 
-**Dokumen:**
-
-- [SKPA_KELOMPOK 4_PROYEK AKHIR BMS.pdf](SKPA_KELOMPOK%204_PROYEK%20AKHIR%20BMS.pdf) — laporan proyek akhir
-- [Paper.pdf](Paper.pdf) — paper referensi
-
-## Cara Menjalankan
-
-Butuh **MATLAB** (diuji dengan R2024b) — tidak ada toolbox tambahan; hanya `polyfit`, `readmatrix`, `readtable`.
+Requires **MATLAB** (tested on R2024b). No extra toolboxes — only `polyfit`, `readmatrix`, and `readtable`.
 
 ```matlab
-% dari folder proyek
-run SoCApprox.mlx   % 1. kurva OCV-SOC
-run FFRLS.mlx       % 2. identifikasi parameter
+% from the project folder
+run SoCApprox.mlx   % 1. OCV-SOC curve
+run FFRLS.mlx       % 2. parameter identification
 run LM.mlx          % 3. refinement
-run EKF.mlx         % 4. estimasi SOC
+run EKF.mlx         % 4. SOC estimation
 ```
 
-Urutan ini wajib — tiap tahap membaca file `.txt` yang dihasilkan tahap sebelumnya. File `.txt` hasil sudah disertakan, jadi tiap notebook juga bisa dijalankan sendiri tanpa mengulang tahap awal.
+## Results
 
-## Detail Implementasi
+### OCV–SOC Model
 
-**FFRLS — penanganan outlier.** Setelah iterasi ke-100, tiap parameter diperiksa terhadap batas ±3σ dari 100 sampel terakhir. Jika ada yang melewati batas, skrip menelusuri mundur hingga 40 estimasi θ sebelumnya dan memakai yang memberi error prediksi terkecil (*early exit* jika error < 0.05). Ini mencegah divergensi saat matriks kovarians `P` menjadi *ill-conditioned*.
+Order-12 polynomials gave the lowest RMSE for both directions: **0.04234 V** for charge and **0.01888 V** for discharge. Below the minimum SOC present in the fitting data, OCV is held flat at the minimum measured value — the horizontal segment on the left of each curve.
 
-**Konversi θ ↔ RC.** Model diskrit orde-2 dari diskretisasi bilinear (Tustin). `theta2rc` menginversi θ menjadi parameter RC lewat konstanta waktu τ₁, τ₂ (akar persamaan kuadrat); `rc2theta_scalar` melakukan arah sebaliknya dan dipakai LM untuk menghitung residual serta Jacobian secara *finite difference* (δ = 1e-6).
+![Polynomial fit vs measured OCV for charge and discharge](docs/images/ocv-soc-fit.png)
 
-**EKF.** Matriks A dan B diturunkan dari solusi eksak diskrit rangkaian RC (`exp(-dt/RC)`); C = `[-1, -1, dUoc/dSOC]`, D = `-R0`. Parameter non-finit dari LM di-*fallback* ke `1e12`. SOC di-*clamp* ke [0, 1] tiap langkah. Tuning: `Q = diag([1e-6, 1e-6, 1e-6])`, `R = 1`, `P₀ = I`.
+Approximation error across polynomial orders — fainter lines are lower orders, the most visible line is order 12:
 
-## Catatan & Gotchas
+![SOC-OCV approximation error by polynomial order](docs/images/ocv-soc-error.png)
 
-- **`dUocCurve.m` mendeklarasikan fungsi bernama `UocCurve`.** MATLAB memanggil berdasarkan nama file, jadi kodenya tetap jalan, tapi nama di dalam file sebaiknya diperbaiki agar tidak membingungkan.
-- **`dUocCurve` membaca `global best_coeffs_chg`, sedangkan `EKF.mlx` mendefinisikannya sebagai variabel lokal.** Tanpa deklarasi `global` di EKF, variabel tersebut kosong dan turunan yang dikembalikan bernilai 0 — Jacobian SOC pada EKF menjadi nol. Perlu dicek ulang sebelum hasil dipakai.
-- **`dUocCurve` hanya memakai koefisien charge**, tidak membedakan charge/discharge seperti `UocCurve`.
-- `voc_soc_polyfit_discharge_charge.txt` berisi fitting orde-8 dari eksperimen awal; yang dipakai pipeline adalah `_polynomialEstimate.txt` (orde-12).
-- Koefisien polinomial yang di-*hardcode* di `UocCurve.m` sedikit berbeda dari isi `_polynomialEstimate.txt` (beda di digit ke-6), karena berasal dari *run* yang berbeda.
+### FFRLS
 
-## Kelompok 4
+Discrete parameter estimates θ₁…θ₆ with λ = 0.98:
 
-Proyek akhir Sistem Kendali Prediktif & Adaptif, Semester 6.
+![Discrete parameter estimation](docs/images/ffrls-theta.png)
+
+Inverted into RC-model parameters:
+
+![Estimated 2nd-order RC model parameters from FFRLS](docs/images/ffrls-rc-params.png)
+
+To keep the estimate from diverging when the covariance matrix `P` becomes ill-conditioned, an *improved FFRLS* step checks each parameter against a ±3σ band over the last 100 samples. On a violation it backtracks up to 40 previous θ estimates and keeps the one with the smallest prediction error, exiting early once the error drops below 0.05 V.
+
+### Levenberg–Marquardt
+
+LM is initialised from the FFRLS estimate and refined per time step (μ₀ = 1e3, c₁ = 0.1, c₂ = 10, maxIter = 20, tol = 1e-2), with the Jacobian computed by finite differences (δ = 1e-6).
+
+![RC parameters estimated with Levenberg-Marquardt](docs/images/lm-rc-params.png)
+
+Compared side by side against FFRLS:
+
+![Comparison of FFRLS and Levenberg-Marquardt parameter estimates](docs/images/lm-vs-ffrls.png)
+
+### Extended Kalman Filter
+
+Three states are estimated: `[U1, U2, SOC]`, with `Q = diag([1e-6, 1e-6, 1e-6])`, `R = 1`, and `P₀ = I`.
+
+![EKF state variables](docs/images/ekf-states.png)
+
+SOC estimate against the Coulomb-counting reference, with percentage error:
+
+![SOC estimation vs Coulomb counting](docs/images/ekf-soc.png)
+
+Reconstructed open-circuit voltage:
+
+![Open-circuit voltage estimation](docs/images/ekf-voc.png)
+
+Reconstructed terminal voltage:
+
+![Terminal voltage estimation](docs/images/ekf-vt.png)
