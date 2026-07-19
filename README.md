@@ -1,4 +1,4 @@
-# BMS — Li-ion Battery SOC Estimation (Kelompok 4, SKPA)
+# BMS — Li-ion Battery SOC Estimation
 
 Final project for **Sistem Kendali Prediktif & Adaptif**: online identification of battery model parameters and *State of Charge* (SOC) estimation using FFRLS, Levenberg–Marquardt, and an Extended Kalman Filter in MATLAB.
 
